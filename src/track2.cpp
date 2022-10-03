@@ -24,6 +24,20 @@ namespace nmpc4rc {
     std::vector<double> X_outer = trackInJsonFormat["X_o"];
     std::vector<double> Y_outer = trackInJsonFormat["Y_o"];
 
+    const double scale = 10;
+    std::transform(X.begin(), X.end(), X.begin(),
+                   [&scale](double element) { return element *= scale; });
+    std::transform(Y.begin(), Y.end(), Y.begin(),
+                   [&scale](double element) { return element *= scale; });
+    std::transform(X_inner.begin(), X_inner.end(), X_inner.begin(),
+                   [&scale](double element) { return element *= scale; });
+    std::transform(Y_inner.begin(), Y_inner.end(), Y_inner.begin(),
+                   [&scale](double element) { return element *= scale; });
+    std::transform(X_outer.begin(), X_outer.end(), X_outer.begin(),
+                   [&scale](double element) { return element *= scale; });
+    std::transform(Y_outer.begin(), Y_outer.end(), Y_outer.begin(),
+                   [&scale](double element) { return element *= scale; });
+
     return
       {
         Eigen::Map<Eigen::VectorXd>(X.data(), X.size()),

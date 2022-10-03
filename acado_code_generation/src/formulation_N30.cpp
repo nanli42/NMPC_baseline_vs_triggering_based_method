@@ -1,106 +1,94 @@
 #include <acado_code_generation.hpp>
 
+typedef struct CarParams {
+    double wheelbase;
+    double friction_coeff;
+    double h_cg; // height of car's CG
+    double l_f; // length from CG to front axle
+    double l_r; // length from CG to rear axle
+    double cs_f; // cornering stiffness coeff for front wheels
+    double cs_r; // cornering stiffness coeff for rear wheels
+    double mass;
+    double I_z; // moment of inertia about z axis from CG
+} Param;
+
 int main( )
 {
   USING_NAMESPACE_ACADO
 
-  DifferentialState   ey, ephi, vx, vy, w, d, delta, t, s;//, dist; //, dummy;
-  IntermediateState   dsdt, Frx, Fry, Ffy, alphaF, alphaR;
-  Control             dd, ddelta; //, slack;
+  DifferentialState   ey, ephi, v, beta, omega, delta, t, s;
+  IntermediateState   dsdt;
+  Control             a, vd;
 
-  OnlineData          ks;//, vx_obs, ey_obs;
+  OnlineData          ks;
 
   DifferentialEquation  f;
 
-  const double m = 0.041;
-  const double Iz = 27.8e-6;
-  const double lf = 0.029;
-  const double lr = 0.033;
+  double g = 9.81; // m/s^2
 
-  const double Cm1=0.287;
-  const double Cm2=0.0545;
-  const double Cr0=0.0518;
-  const double Cr2=0.00035;
+  Param p = {
+        .wheelbase = 0.3302,
+        .friction_coeff = 0.523,
+        .h_cg = 0.074,
+        .l_f = 0.3302 - 0.17145,
+        .l_r = 0.17145,
+        .cs_f = 4.718,
+        .cs_r = 5.4562,
+        .mass = 3.47,
+        .I_z = 0.04712
+  };
 
-  const double Br = 3.3852;
-  const double Cr = 1.2691;
-  const double Dr = 0.1737;
+  IntermediateState rear_val = g * p.l_r - a * p.h_cg;
+  IntermediateState front_val = g * p.l_f + a * p.h_cg;
 
-  const double Bf = 2.579;
-  const double Cf = 1.2;
-  const double Df = 0.192;
+  IntermediateState beta_dot = (p.friction_coeff / (v * (p.l_r + p.l_f))) *
+          (p.cs_f * delta * (rear_val) -
+           beta * (p.cs_r * (front_val) + p.cs_f * (rear_val)) +
+           (omega/v) * (p.cs_r * p.l_r * (front_val) - p.cs_f * p.l_f * (rear_val))) -
+          omega;
 
-  const double e_long = 0.9;
-  const double e_eps = 0.95;
+  IntermediateState omega_dot = (p.friction_coeff * p.mass / (p.I_z * p.wheelbase)) *
+          (p.l_f * p.cs_f * delta * (rear_val) +
+           beta * (p.l_r * p.cs_r * (front_val) - p.l_f * p.cs_f * (rear_val)) -
+           (omega/v) * (std::pow(p.l_f, 2) * p.cs_f * (rear_val) + std::pow(p.l_r, 2) * p.cs_r * (front_val)));
 
-  const double min_alphaF = -0.6;
-  const double max_alphaF = 0.6;
+  dsdt = v*cos(beta + ephi) / ( 1 - ey*ks );
 
-  dsdt = ( vx*cos(ephi) - vy*sin(ephi) ) / ( 1 - ey*ks );
-
-  alphaF = -atan((w*lf+vy)/vx) + delta;
-  alphaR = atan((w*lr-vy)/vx);
-
-  f << dot(ey)      == 1/dsdt * ( vx*sin(ephi) + vy*cos(ephi) );
-  f << dot(ephi)    == 1/dsdt * w - ks;
-
-  /*
-  IntermediateState a = (Cm1-Cm2*vx)*d/m;
-  f << dot(vx)      == 1/dsdt * a;
-  f << dot(vy)      == 1/dsdt * ( lr/(lr+lf) * ( ddelta*vx + delta*a) );
-  f << dot(w)       == 1/dsdt * (  1/(lr+lf) * ( ddelta*vx + delta*a) );
-  */
-
-  Frx = (Cm1-Cm2*vx)*d - Cr0 - Cr2*vx*vx;
-  //Frx = (Cm1-Cm2*vx)*d;
-  Fry = Dr*sin(Cr*atan(Br*alphaR));
-  Ffy = Df*sin(Cf*atan(Bf*alphaF));
-  f << dot(vx)      == 1/dsdt * (w*vy + 1/m*(Frx-Ffy*sin(delta)));
-  f << dot(vy)      == 1/dsdt * (-w*vx + 1/m*(Fry+Ffy*cos(delta)));
-  f << dot(w)       == 1/dsdt * (1/Iz * (lf*Ffy*cos(delta)-lr*Fry));
-
-  f << dot(d)       == 1/dsdt * dd;
-  f << dot(delta)   == 1/dsdt * ddelta;
+  f << dot(ey)      == 1/dsdt * ( v*sin(beta + ephi) );
+  f << dot(ephi)    == 1/dsdt * omega - ks;
+  f << dot(v)       == 1/dsdt * a;
+  f << dot(beta)    == 1/dsdt * beta_dot;
+  f << dot(omega)   == 1/dsdt * omega_dot;
+  f << dot(delta)   == 1/dsdt * vd;
   f << dot(t)       == 1/dsdt;
   f << dot(s)       == 1;
-  //f << dot(dist)    == 1/dsdt * (-vx*cos(ephi)+vy*sin(ephi)+vx_obs);
 
   const double s_start =  0.0;
-  const double s_end   =  1.8;
-  OCP ocp( s_start, s_end, 30 );
+  const double s_end   =  12.0;
+  OCP ocp( s_start, s_end, 40 );
   ocp.minimizeMayerTerm( t );
-  //ocp.minimizeLagrangeTerm( exp(1e2(-dist*dist-(ey-ey_obs)*(ey-ey_obs) + 0.06*0.06)) );
   ocp.setModel( f );
 
-  //double dey = 0.045;
-  double dey = 0.035;
-  double max_v = 1.6;
-  ocp.subjectTo( -0.17 <= ey <= +0.17 );
-  ocp.subjectTo( -1.5 <= ephi <= +1.5 );
-  ocp.subjectTo( +0.05 <= vx <= +max_v );
-  ocp.subjectTo( -1.0 <= vy <= +1.0 );
-  ocp.subjectTo( -8.0 <= w <= +8.0 );
-  ocp.subjectTo( -1.0 <= d <= +1.0 );
-  ocp.subjectTo( -0.6 <= delta <= +0.6 );
-  ocp.subjectTo( +0.0 <= t <= 100.0 );
+  double max_v = 5.0;
+  ocp.subjectTo( -1.3 <= ey <= +1.3 );
+  ocp.subjectTo( -0.75 <= ephi <= +0.75 );
+  ocp.subjectTo( +0.05 <= v <= +max_v );
+  ocp.subjectTo( -0.4 <= beta <= +0.4 ); // inferred value
+  ocp.subjectTo( -4.0 <= omega <= +4.0 ); // inferred value
+  ocp.subjectTo( -0.41 <= delta <= +0.41 );
+  ocp.subjectTo( +0.0 <= t <= 1000.0 );
+  ocp.subjectTo( +0.0 <= s <= 1000.0 );
 
-  ocp.subjectTo( -10.0 <= dd <= +10.0 );
-  ocp.subjectTo( -10.0 <= ddelta <= +10.0 );
+  ocp.subjectTo( -13.26 <= a <= +9.51 );
+  ocp.subjectTo( -3.2 <= vd <= +3.2 );
 
-  ocp.subjectTo( vx*vx+vy*vy <= max_v*max_v );
+  IntermediateState v_para = v*cos(beta + ephi);
+  IntermediateState a_vert = v_para*v_para/(1/ks-ey);
+  IntermediateState a_para = a*cos(beta + ephi);
+  IntermediateState a_total_2 = a_para*a_para + a_vert*a_vert;
 
-  ocp.subjectTo( (e_long*Frx)*(e_long*Frx) + Fry*Fry - (e_eps*Dr)*(e_eps*Dr) <= 0.0 );
-  //ocp.subjectTo( (e_long*Frx)*(e_long*Frx) - (e_eps*Dr)*(e_eps*Dr) <= 0.0 );
-  ocp.subjectTo( min_alphaF <= alphaF <= max_alphaF );
-/*
-  ocp.subjectTo( 0.0 <= slack <= 0.055 );
-  ocp.subjectTo( ey + dey - slack <= +0.17 );
-  ocp.subjectTo( -0.17 <= ey - dey + slack );
-*/
-  ocp.subjectTo( ey + dey <= +0.17 );
-  ocp.subjectTo( -0.17 <= ey - dey );
+  ocp.subjectTo( a_total_2 <= p.friction_coeff*g * p.friction_coeff*g );
 
-  //ocp.setNOD(3);
   ocp.setNOD(1);
 
   OCPexport mpc( ocp );
@@ -108,21 +96,20 @@ int main( )
   mpc.set( HESSIAN_APPROXIMATION,       EXACT_HESSIAN     );
   mpc.set( DISCRETIZATION_TYPE,         MULTIPLE_SHOOTING );
   mpc.set( INTEGRATOR_TYPE,             INT_RK4           );
-  mpc.set( NUM_INTEGRATOR_STEPS,        100               );
+  mpc.set( NUM_INTEGRATOR_STEPS,        500               );
   mpc.set( QP_SOLVER,                   QP_QPOASES        );
   mpc.set( HOTSTART_QP,                 NO               	);
   mpc.set( GENERATE_TEST_FILE,          NO                );
   mpc.set( GENERATE_MAKE_FILE,          NO                );
   mpc.set( GENERATE_MATLAB_INTERFACE,   NO                );
   mpc.set( SPARSE_QP_SOLUTION, 		      FULL_CONDENSING_N2);
-  //mpc.set( DYNAMIC_SENSITIVITY, 		  	FORWARD_OVER_BACKWARD				  );
   mpc.set( DYNAMIC_SENSITIVITY, 		  	SYMMETRIC				  );
 
   mpc.set( GENERATE_SIMULINK_INTERFACE, NO                );
   mpc.set( CG_HARDCODE_CONSTRAINT_VALUES, NO 					    );
   mpc.set( CG_USE_VARIABLE_WEIGHTING_MATRIX, YES 				  );
 
-  mpc.set( LEVENBERG_MARQUARDT, 1e-6 );
+  //mpc.set( LEVENBERG_MARQUARDT, 1e-6 );
 
   if (mpc.exportCode( "../../src/acado_generated_code_N30" ) != SUCCESSFUL_RETURN)
     exit( EXIT_FAILURE );

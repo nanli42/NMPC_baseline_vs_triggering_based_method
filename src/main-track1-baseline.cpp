@@ -59,10 +59,12 @@ www.acadotoolkit.org
 /* Global variables used by the solver. */
 ACADOvariables acadoVariables;
 ACADOworkspace acadoWorkspace;
+ACADOvariables acadoVariables_tmp;
+ACADOworkspace acadoWorkspace_tmp;
 
 using namespace nmpc4rc;
 
-#define NUM_STEPS 146    /* Number of real-time iterations. */
+#define NUM_STEPS 300    /* Number of real-time iterations. */
 #define TRIGGER_CURVATURE 0.8
 #define TRIGGER_PROGRESS_TIME 0.15
 
@@ -97,68 +99,84 @@ double Bf = 2.579;double Cf = 1.2;double Df = 0.192;
 typedef std::vector<double> state_type;
 
 void obs_odes_in_term_of_s( const state_type &x , state_type &dxds , double s) {
-  double dsdt = (x[2]*cos(x[1])-x[3]*sin(x[1])) / (1-x[0]*x[11]); //x[13]);
-  double alphaF = -atan((x[4]*lf+x[3])/x[2]) + x[6];
-  double alphaR = atan((x[4]*lr-x[3])/x[2]);
+  double ks = x[10];
+  double dsdt = x[2]*cos(x[3] + x[1]) / ( 1 - x[0]*ks);
 
-  double Frx = (Cm1-Cm2*x[2])*x[5] - Cr0 - Cr2*x[2]*x[2];
-  double Fry = Dr*sin(Cr*atan(Br*alphaR));
-  double Ffy = Df*sin(Cf*atan(Bf*alphaF));
+  double g = 9.81;
 
-  dxds[0] = 1/dsdt * (x[2]*sin(x[1]) + x[3]*cos(x[1]));
-  dxds[1] = 1/dsdt * x[4] - x[11];
-  dxds[2] = 1/dsdt * (x[4]*x[3] + 1/m*(Frx-Ffy*sin(x[6])));
-  dxds[3] = 1/dsdt * (-x[4]*x[2] + 1/m*(Fry+Ffy*cos(x[6])));
-  dxds[4] = 1/dsdt * (1/Iz * (lf*Ffy*cos(x[6])-lr*Fry));
-  dxds[5] = 1/dsdt * x[9]; //x[11];
-  dxds[6] = 1/dsdt * x[10]; //x[12];
-  dxds[7] = 1/dsdt * 1;
+  Param p = {
+        .wheelbase = 0.3302,
+        .friction_coeff = 0.523,
+        .h_cg = 0.074,
+        .l_f = 0.3302 - 0.17145,
+        .l_r = 0.17145,
+        .cs_f = 4.718,
+        .cs_r = 5.4562,
+        .mass = 3.47,
+        .I_z = 0.04712
+  };
 
-  dxds[8] = 1;
+  double rear_val = g * p.l_r - x[8] * p.h_cg;
+  double front_val = g * p.l_f + x[8] * p.h_cg;
+  double beta_dot = (p.friction_coeff / (x[2] * (p.l_r + p.l_f))) *
+          (p.cs_f * x[5] * (rear_val) -
+           x[3] * (p.cs_r * (front_val) + p.cs_f * (rear_val)) +
+           (x[4]/x[2]) * (p.cs_r * p.l_r * (front_val) - p.cs_f * p.l_f * (rear_val))) -
+          x[4];
+  double omega_dot = (p.friction_coeff * p.mass / (p.I_z * p.wheelbase)) *
+          (p.l_f * p.cs_f * x[5] * (rear_val) +
+           x[3] * (p.l_r * p.cs_r * (front_val) - p.l_f * p.cs_f * (rear_val)) -
+           (x[4]/x[2]) * (std::pow(p.l_f, 2) * p.cs_f * (rear_val) + std::pow(p.l_r, 2) * p.cs_r * (front_val)));
 
+  dxds[0] = 1/dsdt * x[2] * sin(x[3] + x[1]) / ( 1 - x[0]*ks);
+  dxds[1] = 1/dsdt * x[4] - ks * dsdt;
+  dxds[2] = 1/dsdt * x[8];
+  dxds[3] = 1/dsdt * beta_dot;
+  dxds[4] = 1/dsdt * omega_dot;
+  dxds[5] = 1/dsdt * x[9];
+  dxds[6] = 1/dsdt * 1;
+  dxds[7] = 1;
+
+  dxds[8] = 0;
   dxds[9] = 0;
-  dxds[10] = 0;
 
-  dxds[11] = 0;
+  dxds[10] = 0;
 }
 State integrate_in_term_of_s(State state, double delta_s) {
-  state_type x(12); // = { 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, // 9 states
-            //   1.0, 0.0, // 2 ctrls
-            //   0.0 // 1 curvature
-            // }; // initial conditions // 9 states + 2 ctrls + 1 curvature
+  std::vector<double> x(11);
 
   x[0] = state.ey;
   x[1] = state.epsi;
-  x[2] = state.vx;
-  x[3] = state.vy;
-  x[4] = state.w;
-  x[5] = state.d;
-  x[6] = state.delta;
-  x[7] = state.t;
-  x[8] = state.s;
+  x[2] = state.v;
+  x[3] = state.beta;
+  x[4] = state.omega;
+  x[5] = state.delta;
+  x[6] = state.t;
+  x[7] = state.s;
 
-  x[9] = state.dd;
-  x[10] = state.ddelta;
+  x[8] = state.a;
+  x[9] = state.vd;
 
-  x[11] = state.curvature;
+  x[10] = state.ks;
 
-  typedef runge_kutta_cash_karp54< state_type > error_stepper_type;
+  typedef runge_kutta_cash_karp54< std::vector<double> > error_stepper_type;
   size_t steps =  integrate_adaptive( make_controlled< error_stepper_type >( 1.0e-10 , 1.0e-6 ) , // abs_err = 1.0e-10 , rel_err = 1.0e-6
                     obs_odes_in_term_of_s, x, 0.0, delta_s, 1e-6 );  //...start_time, end_time, default_dt...
 
   State result_state;
   result_state.ey = x[0];
   result_state.epsi = x[1];
-  result_state.vx = x[2];
-  result_state.vy = x[3];
-  result_state.w = x[4];
-  result_state.d = x[5];
-  result_state.delta = x[6];
-  result_state.t = x[7];
-  result_state.s = x[8];
+  result_state.v = x[2];
+  result_state.beta = x[3];
+  result_state.omega = x[4];
+  result_state.delta = x[5];
+  result_state.t = x[6];
+  result_state.s = x[7];
 
   return result_state;
 };
+
+double step_s = 0.3;
 
 /* A template for testing of the solver. */
 int main(int argc, char const *argv[]) {
@@ -188,28 +206,39 @@ int main(int argc, char const *argv[]) {
 
 	/* Initialize the solver. */
 	acado_initializeSolver();
+  for (int i = 0; i < N; i++) acadoVariables.ubAValues[i*NX+2] = 5.0;
 
   acadoVariables.x0[0] = 0.0; // ey
   acadoVariables.x0[1] = 0.0; // ehi
-  acadoVariables.x0[2] = 1.0; // vx
-  acadoVariables.x0[3] = 0.0; // vy
+  acadoVariables.x0[2] = 1.0; // v
+  acadoVariables.x0[3] = 0.0; // beta
   acadoVariables.x0[4] = 0.0; // omega
-  acadoVariables.x0[5] = 0.0; // d
-  acadoVariables.x0[6] = 0.0; // delta
-  acadoVariables.x0[7] = 0.0; // t
-  acadoVariables.x0[8] = 0.0; // s
+  acadoVariables.x0[5] = 0.0; // delta
+  acadoVariables.x0[6] = 0.0; // t
+  acadoVariables.x0[7] = 0.0; // s
 
-  for (i = 0; i < N; ++i) acadoVariables.od[i] = get_curature(track.sp, acadoVariables.x0[8] + i*0.06);
+  for (i = 0; i < N+1; ++i) acadoVariables.od[i] = get_curature(track.sp, acadoVariables.x0[7] + i*step_s);
 
   for (i = 0; i < N + 1; ++i)  {
     for (j = 0; j < NX; ++j)
       acadoVariables.x[ i*NX + j ] = 0.0;
-    acadoVariables.x[ i*NX + 2 ] = 1.0;
-    acadoVariables.x[ i*NX + 5 ] = 1.0;
-    acadoVariables.x[ i*NX + 6 ] = atan(acadoVariables.od[i]*0.06);
+    acadoVariables.x[ i*NX + 2 ] = 2.0;
+    acadoVariables.x[ i*NX + 7 ] = acadoVariables.x0[7] + i*step_s;
+
+    double lf = 0.3302 - 0.17145;
+    double lr = 0.17145;
+    acadoVariables.x[ i*NX + 5 ] = atan(acadoVariables.od[ i*NOD + 0 ]*(lr+lf));
+    if (acadoVariables.x[ i*NX + 5 ]>0.41) acadoVariables.x[ i*NX + 5 ] = 0.41;
+    if (acadoVariables.x[ i*NX + 5 ]<-0.41) acadoVariables.x[ i*NX + 5 ] = -0.41;
+
+    acadoVariables.x[ i*NX + 4 ] = acadoVariables.x[ i*NX + 5 ]*acadoVariables.x[ i*NX + 2 ]/(lr+lf);
+    acadoVariables.x[ i*NX + 3 ] = acadoVariables.x[ i*NX + 4 ]*lr;
   }
 
-  for (i = 0; i < NU * N; ++i)  acadoVariables.u[i] = 0.0;
+  for (i = 0; i < N; ++i) {
+    acadoVariables.u[i*NU+0] = 1.0;
+    acadoVariables.u[i*NU+1] = 0.0;
+  }
 
 
 	/* Get the time before start of the loop. */
@@ -224,48 +253,49 @@ int main(int argc, char const *argv[]) {
     acado_feedbackStep();
     prec = acado_getKKT();
     iter++;
+    printf("KKT Tolerance = %.3e\n", prec );
   }
   /* Read the elapsed time. */
   real_t te = acado_toc( &t );
+  acado_printDifferentialVariables();
 
   if( VERBOSE ) {
     printf("\tStep %d: Total iter = %d, KKT Tolerance = %.3e\n", 0, iter, acado_getKKT() );
-    printf("\tprogress:   %.3f\n", acadoVariables.x0[8]);
+    printf("\tprogress:   %.3f\n", acadoVariables.x0[7]);
     printf("\tcalc time:   %.3g ms\n", 1e3 * te);
   }
 
   int next_n = 0;
-  double last_time = acadoVariables.x0[7];
+  double last_time = acadoVariables.x0[6];
 	/* The "real-time iterations" loop. */
 	for(step = 0; step < NUM_STEPS; ++step)
 	{
-    fprintf(fp_time, "%f %d %f %d\n", 1e3 * te, next_n, (acadoVariables.x0[7]-last_time)*1e3, iter);
-    last_time = acadoVariables.x0[7];
+    fprintf(fp_time, "%f %d %f %d\n", 1e3 * te, next_n, (acadoVariables.x0[6]-last_time)*1e3, iter);
+    last_time = acadoVariables.x0[6];
 
     for (i = 0; i < N + 1; ++i)
       fprintf(fp_whole, "%f %f %f %f %f %f %f %f %f %f\n",
-        acadoVariables.x[i*NX + 8], // s
+        acadoVariables.x[i*NX + 7], // s
         acadoVariables.x[i*NX + 0], // ey
         acadoVariables.x[i*NX + 1], // ephi
-        sqrt(acadoVariables.x[i*NX + 2]*acadoVariables.x[i*NX + 2] + acadoVariables.x[i*NX + 3]*acadoVariables.x[i*NX + 3]), // v
-        acadoVariables.x[i*NX + 5], // d
-        acadoVariables.x[i*NX + 6], // delta
-        acadoVariables.x[i*NX + 7], // t
+        acadoVariables.x[i*NX + 2], // v
+        acadoVariables.x[i*NX + 4], // omega
+        acadoVariables.x[i*NX + 5], // delta
+        acadoVariables.x[i*NX + 6], // t
         acadoVariables.od[i], // kappa
-        i == N ? 0.0 : acadoVariables.u[i*NU + 0], // dd
-        i == N ? 0.0 : acadoVariables.u[i*NU + 1] // ddelta
+        i == N ? 0.0 : acadoVariables.u[i*NU + 0], // a
+        i == N ? 0.0 : acadoVariables.u[i*NU + 1] // vd
       );
 
     std::vector<double> time_tab;
-    double dt = 0.06*(1-0.135*abs(acadoVariables.od[0]))/(1.6+1e-3);
+    double dt = step_s*(1-1.4*abs(acadoVariables.od[0]))/(5+1e-3);
     for (i = 1; i < N; ++i) {
-      //printf("dt: %f\n", dt);
       time_tab.push_back(dt);
-      dt += 0.06*(1-0.135*abs(acadoVariables.od[i]))/(1.6+1e-3);
+      dt += step_s*(1-1.4*abs(acadoVariables.od[i]))/(5+1e-3);
     }
 
     for (i = 1; i < N; ++i)
-      if ((abs(get_curature(track.sp, acadoVariables.x0[8] + (N+i)*0.06)-get_curature(track.sp, acadoVariables.x0[8] + N*0.06))
+      if ((abs(get_curature(track.sp, acadoVariables.x0[7] + (N+i)*step_s)-get_curature(track.sp, acadoVariables.x0[7] + N*step_s))
       > TRIGGER_CURVATURE) && (time_tab[i-1]>TRIGGER_PROGRESS_TIME)) {//(acadoVariables.x[NX*i+7]-acadoVariables.x[NX*0+7]>TRIGGER_PROGRESS_TIME)) {
         printf("dt: %f\n", time_tab[i]);
         break;
@@ -274,7 +304,7 @@ int main(int argc, char const *argv[]) {
     next_n = 1;
 
     printf("next_n: %d\n", next_n);
-    printf("\tprog time:   %.3g ms\n", (acadoVariables.x[NX*next_n+7]-acadoVariables.x0[7])*1e3);
+    printf("\tprog time:   %.3g ms\n", (acadoVariables.x[NX*next_n+6]-acadoVariables.x0[6])*1e3);
 
     State state = {
       acadoVariables.x[0*NX+0],
@@ -285,71 +315,74 @@ int main(int argc, char const *argv[]) {
       acadoVariables.x[0*NX+5],
       acadoVariables.x[0*NX+6],
       acadoVariables.x[0*NX+7],
-      acadoVariables.x[0*NX+8],
-      0.0,
-      0.0,
       acadoVariables.u[0*NU+0],
       acadoVariables.u[0*NU+1],
       acadoVariables.od[0]
     };
 
     for (i = 0; i < next_n; ++i) {
-      if (state.s <= 8.71)
+      if (state.s <= 87.1)
         fprintf(fp_actual, "%f %f %f %f %f %f %f\n",
           state.s,
           state.ey,
           state.epsi,
-          sqrt(state.vx*state.vx+state.vy*state.vy),
-          state.d,
+          state.v,
+          state.a,
           state.delta,
           state.t
         );
 
-      state = integrate_in_term_of_s(state, 0.06);
+      //state = integrate_in_term_of_s(state, 0.06);
 
       state.dd = acadoVariables.u[(i+1)*NU+0];
       state.ddelta = acadoVariables.u[(i+1)*NU+1];
       state.curvature = acadoVariables.od[i+1];
     }
-    if (state.s > 8.71) break;
-
+    if (state.s > 87.1) break;
+/*
     acadoVariables.x0[0] = state.ey;
     acadoVariables.x0[1] = state.epsi;
-    acadoVariables.x0[2] = state.vx;
-    acadoVariables.x0[3] = state.vy;
-    acadoVariables.x0[4] = state.w;
-    acadoVariables.x0[5] = state.d;
-    acadoVariables.x0[6] = state.delta;
-    acadoVariables.x0[7] = state.t;
-    acadoVariables.x0[8] = state.s;
+    acadoVariables.x0[2] = state.v;
+    acadoVariables.x0[3] = state.beta;
+    acadoVariables.x0[4] = state.omega;
+    acadoVariables.x0[5] = state.delta;
+    acadoVariables.x0[6] = state.t;
+    acadoVariables.x0[7] = state.s;
+*/
     for (i = 0; i < NX; ++i) {
       acadoVariables.x0[i] = acadoVariables.x[NX*next_n + i];
     }
 
+
     for (i = 0; i < N+1; ++i)
-      acadoVariables.od[i] = get_curature(track.sp, acadoVariables.x0[8] + i*0.06);
+      acadoVariables.od[i] = get_curature(track.sp, acadoVariables.x0[7] + i*step_s);
 
     for (i = 0; i < next_n; i++) {
       acado_shiftStates(2, 0, 0);
       acado_shiftControls(0);
     }
-    /*
+/*
     for (i = N + 1 - next_n; i < N + 1; ++i)  {
       for (j = 0; j < NX; ++j)
         acadoVariables.x[ i*NX + j ] = 0.0;
-      acadoVariables.x[ i*NX + 2 ] = 1.0;
-      acadoVariables.x[ i*NX + 5 ] = 1.0;
-      acadoVariables.x[ i*NX + 6 ] = atan(acadoVariables.od[i]*0.06);
-      if (acadoVariables.od[i]>1.0)
-        acadoVariables.x[ i*NX + 0 ] = +0.1;
-      else if (acadoVariables.od[i]<-1.0)
-        acadoVariables.x[ i*NX + 0 ] = -0.1;
+      acadoVariables.x[ i*NX + 2 ] = 2.0;
+      acadoVariables.x[ i*NX + 7 ] = acadoVariables.x0[7] + i*step_s;
 
-      for (j = 0; j < NU; ++j)
-        acadoVariables.u[ (i-1)*NU + j ] = 0.0;
+      double lf = 0.3302 - 0.17145;
+      double lr = 0.17145;
+      acadoVariables.x[ i*NX + 5 ] = atan(acadoVariables.od[ i*NOD + 0 ]*(lr+lf));
+      if (acadoVariables.x[ i*NX + 5 ]>0.41) acadoVariables.x[ i*NX + 5 ] = 0.41;
+      if (acadoVariables.x[ i*NX + 5 ]<-0.41) acadoVariables.x[ i*NX + 5 ] = -0.41;
+
+      acadoVariables.x[ i*NX + 4 ] = acadoVariables.x[ i*NX + 5 ]*acadoVariables.x[ i*NX + 2 ]/(lr+lf);
+      acadoVariables.x[ i*NX + 3 ] = acadoVariables.x[ i*NX + 4 ]*lr;
     }
-    */
 
+    for (i = N + 1 - next_n; i < N+1; ++i)  {
+      acadoVariables.u[(i-1)*NU+0] = 0.0;
+      acadoVariables.u[(i-1)*NU+1] = 0.0;
+    }
+*/
 		/* Get the time before start of the loop. */
 		acado_tic( &t );
 
@@ -366,10 +399,17 @@ int main(int argc, char const *argv[]) {
 
     /* Read the elapsed time. */
     te = acado_toc( &t );
+    acado_printDifferentialVariables();
+
+    if (isnan(prec)) {
+      acadoVariables = acadoVariables_tmp;
+      acadoWorkspace = acadoWorkspace_tmp;
+      return 1;
+    }
 
     if( VERBOSE ) {
       printf("\tStep %d: Total iter = %d, KKT Tolerance = %.3e\n", step+1, iter, acado_getKKT() );
-      printf("\tprogress:   %.3f\n", acadoVariables.x0[8]);
+      printf("\tprogress:   %.3f\n", acadoVariables.x0[7]);
       printf("\tcalc time:   %.3g ms\n\n", 1e3 * te);
     }
 

@@ -41,7 +41,7 @@ def getTrack(filename):
     track_file = os.path.join(str(Path(__file__).parent), filename)
     array=np.loadtxt(track_file)
 
-    gain = 1
+    gain = 10.0
     sref=array[:,0] * gain
     xref=array[:,1] * gain
     yref=array[:,2] * gain

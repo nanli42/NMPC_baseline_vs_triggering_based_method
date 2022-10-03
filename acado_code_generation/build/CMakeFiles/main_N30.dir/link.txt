@@ -1,0 +1,1 @@
+/usr/bin/c++ -rdynamic CMakeFiles/main_N30.dir/src/formulation_N30.cpp.o -o main_N30  -Wl,-rpath,/home/nan/workspace/tool/ACADOtoolkit/build/lib /home/nan/workspace/tool/ACADOtoolkit/build/lib/libacado_toolkit_s.so 

@@ -46,7 +46,7 @@ def plotTrackProj(simX, opt=1, T_opt=None, vel=True, whole=True):
         filename = 'bigger_track.txt'
 
     # scale
-    gain = 1
+    gain = 10
 
     # load track
     s=simX[:,0]

@@ -45,7 +45,7 @@ def transformProj2Orig(si,ni,alpha,v,fn='LMS_Track.txt'):
     t=(si-sref[idxmindist])/(sref[idxmindist2]-sref[idxmindist])
     x0=(1-t)*xref[idxmindist]+t*xref[idxmindist2]
     y0=(1-t)*yref[idxmindist]+t*yref[idxmindist2]
-    psi0=(1-t)*psiref[idxmindist]+t*psiref[idxmindist2]
+    psi0=psiref[idxmindist] #(1-t)*psiref[idxmindist]+t*psiref[idxmindist2]
 
     x=x0-ni*np.sin(psi0)
     y=y0+ni*np.cos(psi0)
