@@ -174,10 +174,12 @@ int main(int argc, char const *argv[]) {
   FILE * fp_whole;
   FILE * fp_actual;
   FILE * fp_time;
+  FILE * fp_stat;
 
   fp_whole = fopen ("../result/triggering/track2/N30/traj_whole.txt", "w");
   fp_actual = fopen ("../result/triggering/track2/N30/traj_actual.txt", "w");
   fp_time = fopen ("../result/triggering/track2/N30/traj_time.txt", "w");
+  fp_stat = fopen ("../result/triggering/track2/N30/trigger_stat.txt", "w");
 
 	/* Initialize the solver. */
 	acado_initializeSolver();
@@ -257,11 +259,21 @@ int main(int argc, char const *argv[]) {
       dt += 0.06*(1-0.135*abs(acadoVariables.od[i]))/(1.6+1e-3);
     }
 
+    fprintf(fp_stat, "%d %d %d\n", step, 1, 1);
     for (i = 1; i < N; ++i)
       if ((abs(get_curature(track.sp, acadoVariables.x0[8] + (N+i)*0.06)-get_curature(track.sp, acadoVariables.x0[8] + N*0.06))
       > TRIGGER_CURVATURE) && (time_tab[i-1]>TRIGGER_PROGRESS_TIME)) {//(acadoVariables.x[NX*i+7]-acadoVariables.x[NX*0+7]>TRIGGER_PROGRESS_TIME)) {
         printf("dt: %f\n", time_tab[i]);
         break;
+      } else {
+        if (!(time_tab[i-1]>TRIGGER_PROGRESS_TIME) &&
+            !(abs(get_curature(track.sp, acadoVariables.x0[8] + (N+i)*0.06)-get_curature(track.sp, acadoVariables.x0[8] + N*0.06)) > TRIGGER_CURVATURE)
+           )
+           fprintf(fp_stat, "%d %d %d\n", step+i, 0, 0);
+        else if (!(time_tab[i-1]>TRIGGER_PROGRESS_TIME))
+          fprintf(fp_stat, "%d %d %d\n", step+i, 0, 1);
+        else
+          fprintf(fp_stat, "%d %d %d\n", step+i, 1, 0);
       }
     next_n = i;
 
@@ -369,6 +381,7 @@ int main(int argc, char const *argv[]) {
   fclose(fp_whole);
   fclose(fp_actual);
   fclose(fp_time);
+  fclose(fp_stat);
 
   return 0;
 }
