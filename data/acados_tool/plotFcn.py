@@ -39,7 +39,7 @@ from matplotlib import cm
 import matplotlib.pyplot as plt
 import numpy as np
 
-def plotTrackProj(simX, opt=1, T_opt=None, vel=True, whole=True):
+def plotTrackProj(simX, opt=1, T_opt=None, vel=True, whole=True, show=True, traj_color='b-', traj_name=""):
     if (opt==1):
         filename = 'LMS_Track.txt'
     if (opt==2):
@@ -59,81 +59,83 @@ def plotTrackProj(simX, opt=1, T_opt=None, vel=True, whole=True):
 
     # plot racetrack map
     #Setup plot
-    if (opt==1):
-        plt.figure(figsize=(10, 10), dpi=80)
-        plt.ylim(bottom=-1.75*gain,top=0.35*gain)
-        plt.xlim(left=-1.1*gain,right=1.6*gain)
-    if (opt==2):
-        plt.figure(figsize=(10, 10), dpi=80)
-        plt.ylim(bottom=-2.0*gain,top=2.0*gain)
-        plt.xlim(left=-1.5*gain,right=2.0*gain)
-    plt.ylabel('y[m]')
-    plt.xlabel('x[m]')
+    if (show):
+        if (opt==1):
+            plt.figure(figsize=(10, 10), dpi=80)
+            plt.ylim(bottom=-1.75*gain,top=0.35*gain)
+            plt.xlim(left=-1.1*gain,right=1.6*gain)
+        if (opt==2):
+            plt.figure(figsize=(10, 10), dpi=80)
+            plt.ylim(bottom=-2.0*gain,top=2.0*gain)
+            plt.xlim(left=-1.5*gain,right=2.0*gain)
+        plt.ylabel('y[m]')
+        plt.xlabel('x[m]')
 
-    # Plot center line
-    [Sref,Xref,Yref,Psiref,_] = getTrack(filename)
-    plt.plot(Xref,Yref,'--',color='k')
+        # Plot center line
+        [Sref,Xref,Yref,Psiref,_] = getTrack(filename)
+        plt.plot(Xref,Yref,'--',color='k')
 
-    # Draw Trackboundaries
-    Xboundleft=Xref-distance*np.sin(Psiref)
-    Yboundleft=Yref+distance*np.cos(Psiref)
-    Xboundright=Xref+distance*np.sin(Psiref)
-    Yboundright=Yref-distance*np.cos(Psiref)
-    plt.plot(Xboundleft,Yboundleft,color='k',linewidth=1)
-    plt.plot(Xboundright,Yboundright,color='k',linewidth=1)
+        # Draw Trackboundaries
+        Xboundleft=Xref-distance*np.sin(Psiref)
+        Yboundleft=Yref+distance*np.cos(Psiref)
+        Xboundright=Xref+distance*np.sin(Psiref)
+        Yboundright=Yref-distance*np.cos(Psiref)
+        plt.plot(Xboundleft,Yboundleft,color='k',linewidth=1)
+        plt.plot(Xboundright,Yboundright,color='k',linewidth=1)
+
+        ax = plt.gca()
+        ax.set_aspect('equal', 'box')
+
+        # Put markers for s values
+        if (opt==1):
+            xi=np.zeros(9)
+            yi=np.zeros(9)
+            xi1=np.zeros(9)
+            yi1=np.zeros(9)
+            xi2=np.zeros(9)
+            yi2=np.zeros(9)
+            for ii in range(0,8*gain,gain):
+                i = int(ii / gain)
+                try:
+                    k = list(Sref).index(ii + min(abs(Sref - ii)))
+                except:
+                    k = list(Sref).index(ii - min(abs(Sref - ii)))
+                [_,nrefi,_,_]=transformOrig2Proj(Xref[k],Yref[k],Psiref[k],0)
+                [xi[i],yi[i],_,_]=transformProj2Orig(Sref[k],nrefi+0.26*gain,0,0)
+                plt.text(xi[i], yi[i], '{}m'.format(ii), fontsize=8,horizontalalignment='center',verticalalignment='center')
+                [xi1[i],yi1[i],_,_]=transformProj2Orig(Sref[k],nrefi+0.12*gain,0,0)
+                [xi2[i],yi2[i],_,_]=transformProj2Orig(Sref[k],nrefi+0.15*gain,0,0)
+                plt.plot([xi1[i],xi2[i]],[yi1[i],yi2[i]],color='black')
+        if (opt==2):
+            N = 18
+            xi=np.zeros(N)
+            yi=np.zeros(N)
+            xi1=np.zeros(N)
+            yi1=np.zeros(N)
+            xi2=np.zeros(N)
+            yi2=np.zeros(N)
+            for ii in range(0,N*gain,gain):
+                i = int(ii / gain)
+                try:
+                    k = list(Sref).index(ii + min(abs(Sref - ii)))
+                except:
+                    k = list(Sref).index(ii - min(abs(Sref - ii)))
+                [_,nrefi,_,_]=transformOrig2Proj(Xref[k],Yref[k],Psiref[k],0,filename)
+                [xi[i],yi[i],_,_]=transformProj2Orig(Sref[k],nrefi+0.14*gain,0,0,filename)
+                plt.text(xi[i], yi[i], '{}m'.format(ii), fontsize=8,horizontalalignment='center',verticalalignment='center')
+                [xi1[i],yi1[i],_,_]=transformProj2Orig(Sref[k],nrefi+0.09*gain,0,0,filename)
+                [xi2[i],yi2[i],_,_]=transformProj2Orig(Sref[k],nrefi+0.11*gain,0,0,filename)
+                plt.plot([xi1[i],xi2[i]],[yi1[i],yi2[i]],color='black')
 
     # Draw trajectory
     if (whole):
-        plt.plot(x, y, 'b-')
+        plt.plot(x, y, traj_color, label=traj_name)
 
     if (vel):
         # Draw driven trajectory
         heatmap = plt.scatter(x,y, c=v, cmap=cm.rainbow, edgecolor='none', marker='o')
         cbar = plt.colorbar(heatmap, fraction=0.035)
         cbar.set_label("velocity in [m/s]")
-        ax = plt.gca()
-        ax.set_aspect('equal', 'box')
-
-    # Put markers for s values
-    if (opt==1):
-        xi=np.zeros(9)
-        yi=np.zeros(9)
-        xi1=np.zeros(9)
-        yi1=np.zeros(9)
-        xi2=np.zeros(9)
-        yi2=np.zeros(9)
-        for ii in range(0,8*gain,gain):
-            i = int(ii / gain)
-            try:
-                k = list(Sref).index(ii + min(abs(Sref - ii)))
-            except:
-                k = list(Sref).index(ii - min(abs(Sref - ii)))
-            [_,nrefi,_,_]=transformOrig2Proj(Xref[k],Yref[k],Psiref[k],0)
-            [xi[i],yi[i],_,_]=transformProj2Orig(Sref[k],nrefi+0.26*gain,0,0)
-            plt.text(xi[i], yi[i], '{}m'.format(ii), fontsize=8,horizontalalignment='center',verticalalignment='center')
-            [xi1[i],yi1[i],_,_]=transformProj2Orig(Sref[k],nrefi+0.12*gain,0,0)
-            [xi2[i],yi2[i],_,_]=transformProj2Orig(Sref[k],nrefi+0.15*gain,0,0)
-            plt.plot([xi1[i],xi2[i]],[yi1[i],yi2[i]],color='black')
-    if (opt==2):
-        N = 18
-        xi=np.zeros(N)
-        yi=np.zeros(N)
-        xi1=np.zeros(N)
-        yi1=np.zeros(N)
-        xi2=np.zeros(N)
-        yi2=np.zeros(N)
-        for ii in range(0,N*gain,gain):
-            i = int(ii / gain)
-            try:
-                k = list(Sref).index(ii + min(abs(Sref - ii)))
-            except:
-                k = list(Sref).index(ii - min(abs(Sref - ii)))
-            [_,nrefi,_,_]=transformOrig2Proj(Xref[k],Yref[k],Psiref[k],0,filename)
-            [xi[i],yi[i],_,_]=transformProj2Orig(Sref[k],nrefi+0.14*gain,0,0,filename)
-            plt.text(xi[i], yi[i], '{}m'.format(ii), fontsize=8,horizontalalignment='center',verticalalignment='center')
-            [xi1[i],yi1[i],_,_]=transformProj2Orig(Sref[k],nrefi+0.09*gain,0,0,filename)
-            [xi2[i],yi2[i],_,_]=transformProj2Orig(Sref[k],nrefi+0.11*gain,0,0,filename)
-            plt.plot([xi1[i],xi2[i]],[yi1[i],yi2[i]],color='black')
 
 def plotRes(simX, str):
     # plot results

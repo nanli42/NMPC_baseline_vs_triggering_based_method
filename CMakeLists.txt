@@ -75,3 +75,35 @@ add_executable(main_track1_triggering ${SRC_track1_triggering})
 target_link_libraries(main_track1_triggering acado_generated_rti_N30)
 add_executable(main_track2_triggering ${SRC_track2_triggering})
 target_link_libraries(main_track2_triggering acado_generated_rti_N30)
+
+file(GLOB SRC_track1_triggering-only_time_cond
+  "src/main-track1-triggering-only_time_cond.cpp"
+  "src/track1.cpp"
+  "src/types.cpp"
+)
+file(GLOB SRC_track2_triggering-only_time_cond
+  "src/main-track2-triggering-only_time_cond.cpp"
+  "src/track2.cpp"
+  "src/types.cpp"
+)
+
+add_executable(main_track1_triggering-only_time_cond ${SRC_track1_triggering-only_time_cond})
+target_link_libraries(main_track1_triggering-only_time_cond acado_generated_rti_N30)
+add_executable(main_track2_triggering-only_time_cond ${SRC_track2_triggering-only_time_cond})
+target_link_libraries(main_track2_triggering-only_time_cond acado_generated_rti_N30)
+
+file(GLOB SRC_track1_triggering-until_N
+  "src/main-track1-triggering-until_N.cpp"
+  "src/track1.cpp"
+  "src/types.cpp"
+)
+file(GLOB SRC_track2_triggering-until_N
+  "src/main-track2-triggering-until_N.cpp"
+  "src/track2.cpp"
+  "src/types.cpp"
+)
+
+add_executable(main_track1_triggering-until_N ${SRC_track1_triggering-until_N})
+target_link_libraries(main_track1_triggering-until_N acado_generated_rti_N30)
+add_executable(main_track2_triggering-until_N ${SRC_track2_triggering-until_N})
+target_link_libraries(main_track2_triggering-until_N acado_generated_rti_N30)
